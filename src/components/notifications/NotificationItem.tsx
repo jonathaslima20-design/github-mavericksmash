@@ -1,11 +1,10 @@
-import { useState } from 'react';
 import { MessageSquare, Eye, CreditCard, Phone, Tag, Info, X, ShoppingBag, TriangleAlert as AlertTriangle, PackageX, Gift, UserPlus, Sparkles, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AppNotification, NotificationType } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
-import NotificationDetailDialog from './NotificationDetailDialog';
+import { getNotificationNavigationAction } from '@/lib/notificationNavigation';
 
 const ICON_MAP: Record<NotificationType, React.ElementType> = {
   new_lead: MessageSquare,
@@ -55,7 +54,6 @@ export default function NotificationItem({
   onClick,
 }: NotificationItemProps) {
   const navigate = useNavigate();
-  const [detailOpen, setDetailOpen] = useState(false);
   const Icon = ICON_MAP[notification.type] || Info;
   const colorClass = COLOR_MAP[notification.type] || COLOR_MAP.system;
 
@@ -65,11 +63,20 @@ export default function NotificationItem({
   });
 
   const handleClick = () => {
-    setDetailOpen(true);
     if (!notification.is_read) {
       onRead(notification.id);
     }
     onClick?.(notification);
+
+    const action = getNotificationNavigationAction(notification);
+
+    if (action.type === 'navigate') {
+      navigate(action.path);
+    } else if (action.type === 'external') {
+      window.open(action.url, '_blank');
+    } else {
+      navigate(`/dashboard/notifications/${notification.id}`);
+    }
   };
 
   const handleCtaClick = (e: React.MouseEvent) => {
@@ -87,60 +94,50 @@ export default function NotificationItem({
   };
 
   return (
-    <>
-      <div
-        className={cn(
-          'group flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-muted/50 border-b border-border/50 last:border-b-0',
-          !notification.is_read && 'bg-primary/[0.03]'
-        )}
-        onClick={handleClick}
-      >
-        <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full', colorClass)}>
-          <Icon className="h-4 w-4" />
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <p className={cn('text-sm truncate', !notification.is_read ? 'font-semibold' : 'font-medium')}>
-              {notification.title}
-            </p>
-            {!notification.is_read && (
-              <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />
-            )}
-          </div>
-          <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">
-            {notification.message}
-          </p>
-          {notification.cta_label && notification.cta_url && (
-            <button
-              onClick={handleCtaClick}
-              className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] font-medium text-foreground/80 transition-colors hover:bg-muted hover:text-foreground"
-            >
-              {notification.cta_label}
-              <ExternalLink className="h-3 w-3" />
-            </button>
-          )}
-          <p className="mt-1 text-[11px] text-muted-foreground/70">{timeAgo}</p>
-        </div>
-
-        <button
-          className="mt-0.5 shrink-0 rounded-md p-1 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete(notification.id);
-          }}
-        >
-          <X className="h-3.5 w-3.5 text-muted-foreground" />
-        </button>
+    <div
+      className={cn(
+        'group flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-muted/50 border-b border-border/50 last:border-b-0',
+        !notification.is_read && 'bg-primary/[0.03]'
+      )}
+      onClick={handleClick}
+    >
+      <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full', colorClass)}>
+        <Icon className="h-4 w-4" />
       </div>
 
-      <NotificationDetailDialog
-        notification={notification}
-        open={detailOpen}
-        onOpenChange={setDetailOpen}
-        onRead={onRead}
-        onDelete={onDelete}
-      />
-    </>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p className={cn('text-sm truncate', !notification.is_read ? 'font-semibold' : 'font-medium')}>
+            {notification.title}
+          </p>
+          {!notification.is_read && (
+            <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />
+          )}
+        </div>
+        <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">
+          {notification.message}
+        </p>
+        {notification.cta_label && notification.cta_url && (
+          <button
+            onClick={handleCtaClick}
+            className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] font-medium text-foreground/80 transition-colors hover:bg-muted hover:text-foreground"
+          >
+            {notification.cta_label}
+            <ExternalLink className="h-3 w-3" />
+          </button>
+        )}
+        <p className="mt-1 text-[11px] text-muted-foreground/70">{timeAgo}</p>
+      </div>
+
+      <button
+        className="mt-0.5 shrink-0 rounded-md p-1 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100"
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete(notification.id);
+        }}
+      >
+        <X className="h-3.5 w-3.5 text-muted-foreground" />
+      </button>
+    </div>
   );
 }

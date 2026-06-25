@@ -52,6 +52,7 @@ import TrackingSettingsPage from '@/pages/dashboard/TrackingSettingsPage.tsx';
 import CategoriesPage from '@/pages/dashboard/CategoriesPage.tsx';
 import ReferralPage from '@/pages/dashboard/ReferralPage.tsx';
 import NotificationsPage from '@/pages/dashboard/NotificationsPage.tsx';
+import NotificationDetailPage from '@/pages/dashboard/NotificationDetailPage.tsx';
 import OrdersPage from '@/pages/dashboard/OrdersPage.tsx';
 import SalesPage from '@/pages/dashboard/SalesPage.tsx';
 import StockMovementsPage from '@/pages/dashboard/StockMovementsPage.tsx';
@@ -240,6 +241,7 @@ function AppContent() {
             <Route path="/dashboard/checkout" element={<CheckoutPage />} />
             <Route path="/dashboard/account" element={<AccountPage />} />
             <Route path="/dashboard/notifications" element={<NotificationsPage />} />
+            <Route path="/dashboard/notifications/:id" element={<NotificationDetailPage />} />
             <Route path="/dashboard/integrations" element={<IntegrationsPage />} />
           </Route>
         </Route>

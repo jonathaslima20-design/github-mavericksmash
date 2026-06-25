@@ -18,6 +18,7 @@ import type { AppNotification, NotificationType } from '@/types';
 import { format, isToday, isYesterday, isThisWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
+import { getNotificationNavigationAction } from '@/lib/notificationNavigation';
 
 const TYPE_LABELS: Record<NotificationType | 'all', string> = {
   all: 'Todos os tipos',
@@ -130,10 +131,14 @@ export default function NotificationsPage() {
   };
 
   const handleNotificationClick = (notification: AppNotification) => {
-    if (notification.related_entity_type === 'order') {
-      navigate('/dashboard/orders');
-    } else if (notification.related_entity_type === 'product' && notification.related_entity_id) {
-      navigate('/dashboard/listings');
+    const action = getNotificationNavigationAction(notification);
+
+    if (action.type === 'navigate') {
+      navigate(action.path);
+    } else if (action.type === 'external') {
+      window.open(action.url, '_blank');
+    } else {
+      navigate(`/dashboard/notifications/${notification.id}`);
     }
   };
 
