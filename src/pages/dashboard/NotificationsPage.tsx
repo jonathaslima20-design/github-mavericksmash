@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Bell, CheckCheck, Filter, Loader as Loader2, Trash2 } from 'lucide-react';
+import { Bell, CheckCheck, Filter, Loader as Loader2, Inbox, MailOpen } from 'lucide-react';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchNotifications } from '@/lib/notificationService';
-import NotificationItem from '@/components/notifications/NotificationItem';
+import NotificationListItem from '@/components/notifications/NotificationListItem';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
@@ -17,8 +18,6 @@ import {
 import type { AppNotification, NotificationType } from '@/types';
 import { format, isToday, isYesterday, isThisWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { useNavigate } from 'react-router-dom';
-import { getNotificationNavigationAction } from '@/lib/notificationNavigation';
 
 const TYPE_LABELS: Record<NotificationType | 'all', string> = {
   all: 'Todos os tipos',
@@ -29,13 +28,13 @@ const TYPE_LABELS: Record<NotificationType | 'all', string> = {
   subscription_expired: 'Assinatura expirada',
   product_sold: 'Vendas',
   new_order: 'Novos pedidos',
+  low_stock: 'Estoque baixo',
+  out_of_stock: 'Produto esgotado',
+  referral_signup: 'Indicações',
+  referral_upgrade: 'Upgrades de indicação',
+  promotional_offer: 'Ofertas promocionais',
+  novidades: 'Novidades',
   system: 'Sistema',
-};
-
-const READ_FILTER_LABELS: Record<string, string> = {
-  all: 'Todas',
-  unread: 'Não lidas',
-  read: 'Lidas',
 };
 
 interface NotificationGroup {
@@ -68,12 +67,11 @@ function groupByDate(notifications: AppNotification[]): NotificationGroup[] {
 export default function NotificationsPage() {
   const { user } = useAuth();
   const { markAsRead, markAllAsRead, deleteNotification, unreadCount, refresh } = useNotifications();
-  const navigate = useNavigate();
 
   const [allNotifications, setAllNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [typeFilter, setTypeFilter] = useState<NotificationType | 'all'>('all');
-  const [readFilter, setReadFilter] = useState<string>('all');
+  const [readFilter, setReadFilter] = useState<'all' | 'unread' | 'read'>('all');
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const LIMIT = 30;
@@ -130,40 +128,80 @@ export default function NotificationsPage() {
     setAllNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
   };
 
-  const handleNotificationClick = (notification: AppNotification) => {
-    const action = getNotificationNavigationAction(notification);
-
-    if (action.type === 'navigate') {
-      navigate(action.path);
-    } else if (action.type === 'external') {
-      window.open(action.url, '_blank');
-    } else {
-      navigate(`/dashboard/notifications/${notification.id}`);
-    }
-  };
+  const unreadCountFiltered = filtered.filter((n) => !n.is_read).length;
+  const readCountFiltered = filtered.filter((n) => n.is_read).length;
 
   return (
-    <div className="container mx-auto p-4 md:p-6 max-w-4xl space-y-6">
+    <div className="container mx-auto p-4 md:p-6 max-w-3xl space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl page-title">Notificações</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {unreadCount > 0
-              ? `Você tem ${unreadCount} notificação${unreadCount > 1 ? 'ões' : ''} não lida${unreadCount > 1 ? 's' : ''}`
-              : 'Todas as notificações estão lidas'}
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+            <Bell className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Notificações</h1>
+            <p className="text-sm text-muted-foreground">
+              {unreadCount > 0
+                ? `Você tem ${unreadCount} não lida${unreadCount > 1 ? 's' : ''}`
+                : 'Todas as notificações estão lidas'}
+            </p>
+          </div>
         </div>
 
         {unreadCount > 0 && (
-          <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={handleMarkAllAsRead}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 shrink-0"
+            onClick={handleMarkAllAsRead}
+          >
             <CheckCheck className="h-4 w-4" />
             Marcar todas como lidas
           </Button>
         )}
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
-        <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as NotificationType | 'all')}>
+      {/* Filtros */}
+      <div className="flex flex-col sm:flex-row gap-3 items-start">
+        <Tabs
+          value={readFilter}
+          onValueChange={(v) => setReadFilter(v as 'all' | 'unread' | 'read')}
+          className="w-full sm:w-auto"
+        >
+          <TabsList className="grid w-full sm:w-auto grid-cols-3">
+            <TabsTrigger value="all" className="gap-1.5 text-xs">
+              <Inbox className="h-3.5 w-3.5" />
+              Todas
+              <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+                {filtered.length}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger value="unread" className="gap-1.5 text-xs">
+              <MailOpen className="h-3.5 w-3.5" />
+              Não lidas
+              {unreadCountFiltered > 0 && (
+                <Badge variant="default" className="h-4 px-1 text-[10px]">
+                  {unreadCountFiltered}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="read" className="gap-1.5 text-xs">
+              <CheckCheck className="h-3.5 w-3.5" />
+              Lidas
+              {readCountFiltered > 0 && (
+                <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+                  {readCountFiltered}
+                </Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        <Select
+          value={typeFilter}
+          onValueChange={(v) => setTypeFilter(v as NotificationType | 'all')}
+        >
           <SelectTrigger className="sm:w-[220px]">
             <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
             <SelectValue />
@@ -176,21 +214,9 @@ export default function NotificationsPage() {
             ))}
           </SelectContent>
         </Select>
-
-        <Select value={readFilter} onValueChange={setReadFilter}>
-          <SelectTrigger className="sm:w-[160px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {Object.entries(READ_FILTER_LABELS).map(([value, label]) => (
-              <SelectItem key={value} value={value}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
 
+      {/* Lista */}
       {loading && allNotifications.length === 0 ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -198,10 +224,12 @@ export default function NotificationsPage() {
       ) : filtered.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
-              <Bell className="h-6 w-6 text-muted-foreground" />
+            <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center mb-4">
+              <Bell className="h-7 w-7 text-muted-foreground" />
             </div>
-            <p className="font-medium text-muted-foreground">Nenhuma notificação encontrada</p>
+            <p className="font-medium text-muted-foreground">
+              Nenhuma notificação encontrada
+            </p>
             <p className="text-sm text-muted-foreground/70 mt-1 max-w-xs">
               {typeFilter !== 'all' || readFilter !== 'all'
                 ? 'Tente alterar os filtros para ver mais notificações.'
@@ -210,21 +238,26 @@ export default function NotificationsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-5">
           {groups.map((group) => (
             <div key={group.label}>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-1">
-                {group.label}
-              </p>
-              <Card className="overflow-hidden">
+              <div className="flex items-center gap-3 mb-2 px-1">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  {group.label}
+                </p>
+                <div className="flex-1 h-px bg-border/60" />
+                <Badge variant="outline" className="text-[10px] h-5">
+                  {group.items.length}
+                </Badge>
+              </div>
+              <Card className="overflow-hidden shadow-sm">
                 <CardContent className="p-0">
                   {group.items.map((notification) => (
-                    <NotificationItem
+                    <NotificationListItem
                       key={notification.id}
                       notification={notification}
                       onRead={handleItemRead}
                       onDelete={handleItemDelete}
-                      onClick={handleNotificationClick}
                     />
                   ))}
                 </CardContent>
@@ -234,11 +267,15 @@ export default function NotificationsPage() {
 
           {hasMore && (
             <div className="flex justify-center pt-2">
-              <Button variant="outline" size="sm" onClick={handleLoadMore} disabled={loading}>
-                {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : null}
-                Carregar mais
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleLoadMore}
+                disabled={loading}
+                className="gap-2"
+              >
+                {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+                Carregar mais notificações
               </Button>
             </div>
           )}
