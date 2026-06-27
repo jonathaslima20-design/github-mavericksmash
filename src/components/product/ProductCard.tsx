@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { ShoppingCart, MessageCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -385,6 +385,16 @@ function ProductCardComponent({
   );
 }
 
+function arraysEqual(a: any[] | null | undefined, b: any[] | null | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 const arePropsEqual = (prevProps: ProductCardProps, nextProps: ProductCardProps) => {
   return (
     prevProps.product.id === nextProps.product.id &&
@@ -392,8 +402,9 @@ const arePropsEqual = (prevProps: ProductCardProps, nextProps: ProductCardProps)
     prevProps.product.price === nextProps.product.price &&
     prevProps.product.discounted_price === nextProps.product.discounted_price &&
     prevProps.product.featured_image_url === nextProps.product.featured_image_url &&
-    prevProps.product.colors === nextProps.product.colors &&
-    prevProps.product.sizes === nextProps.product.sizes &&
+    arraysEqual(prevProps.product.colors, nextProps.product.colors) &&
+    arraysEqual(prevProps.product.sizes, nextProps.product.sizes) &&
+    arraysEqual(prevProps.product.category, nextProps.product.category) &&
     prevProps.product.status === nextProps.product.status &&
     prevProps.product.has_tiered_pricing === nextProps.product.has_tiered_pricing &&
     prevProps.product.has_weight_variants === nextProps.product.has_weight_variants &&

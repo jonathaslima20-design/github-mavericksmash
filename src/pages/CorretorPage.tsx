@@ -5,18 +5,14 @@ import { Loader, CircleAlert as AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useCorretorData } from '@/hooks/useCorretorData';
-import { useProductData } from '@/hooks/useProductData';
-import { useProductSearch } from '@/hooks/useProductSearch';
-import { useCorretorPageState } from '@/hooks/useCorretorPageState';
 import { useProductFilterMetadata } from '@/hooks/useProductFilterMetadata';
 import { useServerSideProductSearch } from '@/hooks/useServerSideProductSearch';
-import { useCategoryPagination } from '@/hooks/useCategoryPagination';
+import { useCorretorPageState } from '@/hooks/useCorretorPageState';
+import { useCategoryProducts } from '@/hooks/useCategoryProducts';
 import CorretorHeader from '@/components/corretor/CorretorHeader';
 import ProductSearch from '@/components/product/ProductSearch';
 import { ProductCard } from '@/components/product/ProductCard';
 import { ProductCardSkeleton } from '@/components/product/ProductCardSkeleton';
-import { groupProductsByCategory } from '@/utils/productDisplayUtils';
-import ShareCategoryButton from '@/components/corretor/ShareCategoryButton';
 import PaginationControls from '@/components/corretor/PaginationControls';
 import InfiniteScrollTrigger from '@/components/corretor/InfiniteScrollTrigger';
 import { logCategoryOperation } from '@/lib/categoryUtils';
@@ -40,18 +36,12 @@ export default function CorretorPage({ customDomainSlug }: CorretorPageProps = {
   const [searchParams] = useSearchParams();
   const location = useLocation();
 
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const [searchResultsPage, setSearchResultsPage] = useState(1);
-
   // Search results state
+  const [searchResultsPage, setSearchResultsPage] = useState(1);
   const [serverSearchResults, setServerSearchResults] = useState<any[]>([]);
   const [allServerSearchResults, setAllServerSearchResults] = useState<any[]>([]);
 
   // Restoration flow state
-  // Phase 1: detect return from product page
-  // Phase 2: state has been read and applied (pagination/filters)
-  // Phase 3: content is rendered, execute scroll
   const [restorationPhase, setRestorationPhase] = useState<'idle' | 'detecting' | 'restoring' | 'awaiting-content' | 'scrolling' | 'done'>('idle');
   const savedScrollPositionRef = useRef<number>(0);
   const restoredSearchPageRef = useRef<number | null>(null);
@@ -78,30 +68,19 @@ export default function CorretorPage({ customDomainSlug }: CorretorPageProps = {
   const currency: SupportedCurrency = corretor?.currency || 'BRL';
   const { t } = useTranslation(language);
 
+  // NEW: Use category-based product loading via edge function
   const {
-    allProducts,
-    categorySettings,
-    settings,
-    loading: productsLoading,
-    error: productsError,
-    sizeTypeMapping,
-    totalProducts,
-  } = useProductData({
-    userId: corretor?.id || '',
-    language,
-  });
-
-  const {
-    displayedCategories,
-    currentCategoryIndex,
+    categories,
+    loading: categoriesLoading,
+    loadingMore: categoriesLoadingMore,
+    error: categoriesError,
+    hasMoreCategories,
     totalCategories,
-    hasNextCategory,
-    loadNextCategory,
-    resetToFirstCategory,
-  } = useCategoryPagination({
-    products: allProducts,
-    categorySettings,
-    language,
+    totalProducts,
+    loadMoreCategories,
+  } = useCategoryProducts({
+    userId: corretor?.id || '',
+    enabled: !!corretor?.id,
   });
 
   const { metadata: filterMetadata, loading: filterMetadataLoading } = useProductFilterMetadata({
@@ -111,21 +90,14 @@ export default function CorretorPage({ customDomainSlug }: CorretorPageProps = {
 
   const { searchProducts, loading: serverSearchLoading } = useServerSideProductSearch();
 
-  const {
-    filteredProducts,
-    isSearchActive,
-    filters,
-    handleSearch,
-    searchQuery = '',
-  } = useProductSearch({
-    allProducts,
-    settings
-  });
+  // Search and filter state
+  const [isSearchActive, setIsSearchActive] = useState(false);
+  const [filters, setFilters] = useState<any>({});
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Initialize page state hook - correctly passes searchResultsPage
   const pageStateHook = useCorretorPageState({
     slug: slug || '',
-    currentPage,
+    currentPage: 1,
     searchResultsPage,
     isSearchActive,
     filters,
@@ -153,7 +125,6 @@ export default function CorretorPage({ customDomainSlug }: CorretorPageProps = {
       setAllServerSearchResults([]);
       setServerSearchResults([]);
       setSearchResultsPage(1);
-      resetToFirstCategory();
       return;
     }
 
@@ -166,8 +137,8 @@ export default function CorretorPage({ customDomainSlug }: CorretorPageProps = {
 
     searchDebounceRef.current = setTimeout(() => {
       const priceDefaults = {
-        minPrice: settings?.priceRange?.minPrice ?? 0,
-        maxPrice: settings?.priceRange?.maxPrice ?? 5000,
+        minPrice: 0,
+        maxPrice: 5000,
       };
 
       searchProducts(corretorId, filtersSnapshot, priceDefaults).then((results) => {
@@ -188,7 +159,7 @@ export default function CorretorPage({ customDomainSlug }: CorretorPageProps = {
         searchDebounceRef.current = null;
       }
     };
-  }, [isSearchActive, filters, corretor?.id, searchProducts, resetToFirstCategory, settings?.priceRange?.minPrice, settings?.priceRange?.maxPrice]);
+  }, [isSearchActive, filters, corretor?.id, searchProducts]);
 
   // Apply pagination to server search results
   useEffect(() => {
@@ -218,20 +189,13 @@ export default function CorretorPage({ customDomainSlug }: CorretorPageProps = {
     }
   }, [filters, restorationPhase]);
 
-  // Reset to page 1 only on user-initiated search
-  useEffect(() => {
-    if (userInitiatedSearchRef.current && isSearchActive && currentPage !== 1) {
-      setCurrentPage(1);
-    }
-  }, [isSearchActive, currentPage]);
-
   // ─── Meta tags ───────────────────────────────────────────────────────────────
   useEffect(() => {
     if (corretor) {
       const metaConfig = getCorretorMetaTags(corretor, language, !!customDomainSlug);
       updateMetaTags(metaConfig);
     }
-  }, [corretor, language]);
+  }, [corretor, language, customDomainSlug]);
 
   // ─── Footer referral link ──────────────────────────────────────────────────
   useEffect(() => {
@@ -254,14 +218,6 @@ export default function CorretorPage({ customDomainSlug }: CorretorPageProps = {
   }, []);
 
   // ─── RESTORATION FLOW ────────────────────────────────────────────────────────
-  //
-  // Phase 1 — DETECTING: triggered when location.state.from === 'product-detail'
-  // Phase 2 — RESTORING: read saved state, apply filters/page
-  // Phase 3 — AWAITING-CONTENT: wait for products + (if filtered) search results
-  // Phase 4 — SCROLLING: scroll to saved position
-  // Phase 5 — DONE
-
-  // Phase 1: detect return from product page
   useEffect(() => {
     if (location.state?.from === 'product-detail' && restorationPhase === 'idle') {
       const savedState = pageStateHook.restoreCurrentState();
@@ -271,12 +227,11 @@ export default function CorretorPage({ customDomainSlug }: CorretorPageProps = {
         scrollCoordinator.startScrollRestoration();
       }
     }
-  }, [location.state?.from, slug]);
+  }, [location.state?.from, slug, pageStateHook, restorationPhase]);
 
-  // Phase 2: apply saved state (filters, page) — wait until data is loaded
   useEffect(() => {
     if (restorationPhase !== 'restoring') return;
-    if (corretorLoading || productsLoading) return;
+    if (corretorLoading || categoriesLoading) return;
 
     const savedState = pageStateHook.restoreCurrentState();
     if (!savedState || savedState.slug !== slug) {
@@ -286,25 +241,16 @@ export default function CorretorPage({ customDomainSlug }: CorretorPageProps = {
     }
 
     if (savedState.isSearchActive && savedState.filters) {
-      // Store which search-results page to apply once server search completes
       restoredSearchPageRef.current = savedState.currentPage >= 1 ? savedState.currentPage : 1;
-      // Trigger the server search — results will come in via the search useEffect above
-      handleSearch(savedState.filters);
-      previousFiltersRef.current = savedState.filters;
+      // Trigger search
       userInitiatedSearchRef.current = false;
       setRestorationPhase('awaiting-content');
     } else {
-      if (savedState.currentPage > 1) {
-        setCurrentPage(savedState.currentPage);
-      }
       userInitiatedSearchRef.current = false;
       setRestorationPhase('awaiting-content');
     }
-  }, [restorationPhase, corretorLoading, productsLoading, slug]);
+  }, [restorationPhase, corretorLoading, categoriesLoading, slug, pageStateHook]);
 
-  // Phase 3: wait for content to be rendered, then scroll
-  // For filtered search: wait until server search results arrive AND pagination is applied
-  // For normal view: wait until products are rendered
   useEffect(() => {
     if (restorationPhase !== 'awaiting-content') return;
 
@@ -317,18 +263,15 @@ export default function CorretorPage({ customDomainSlug }: CorretorPageProps = {
 
     const isFiltered = savedState.isSearchActive && savedState.filters;
 
-    // For filtered: wait for search to finish AND results to be sliced into serverSearchResults
     if (isFiltered) {
       if (serverSearchLoading || serverSearchResults.length === 0) return;
     } else {
-      // For normal: wait until products have loaded
-      if (productsLoading) return;
+      if (categoriesLoading) return;
     }
 
     setRestorationPhase('scrolling');
-  }, [restorationPhase, serverSearchLoading, serverSearchResults.length, productsLoading]);
+  }, [restorationPhase, serverSearchLoading, serverSearchResults.length, categoriesLoading, pageStateHook]);
 
-  // Phase 4: perform the actual scroll with retries
   useEffect(() => {
     if (restorationPhase !== 'scrolling') return;
 
@@ -357,7 +300,6 @@ export default function CorretorPage({ customDomainSlug }: CorretorPageProps = {
 
     requestAnimationFrame(tryScroll);
 
-    // Safety cleanup in case something goes wrong
     const safetyTimeout = setTimeout(() => {
       setRestorationPhase('done');
       scrollCoordinator.endScrollRestoration();
@@ -371,23 +313,11 @@ export default function CorretorPage({ customDomainSlug }: CorretorPageProps = {
     };
   }, [restorationPhase]);
 
-  // ─── Derived display data ─────────────────────────────────────────────────────
-  const productsToDisplay = isSearchActive ? serverSearchResults : allProducts;
-
-  const organizedProducts = isSearchActive
-    ? groupProductsByCategory(productsToDisplay, categorySettings, language)
-    : displayedCategories;
-
   // ─── Handlers ────────────────────────────────────────────────────────────────
   const handlePageChange = (newPage: number) => {
     const currentScrollPosition = window.scrollY || document.documentElement.scrollTop;
     pageStateHook.saveCurrentState(currentScrollPosition);
-
-    if (isSearchActive) {
-      setSearchResultsPage(newPage);
-    } else {
-      setCurrentPage(newPage);
-    }
+    setSearchResultsPage(newPage);
 
     setTimeout(() => {
       requestAnimationFrame(() => {
@@ -398,8 +328,25 @@ export default function CorretorPage({ customDomainSlug }: CorretorPageProps = {
     }, 50);
   };
 
+  const handleSearch = (newFilters: any) => {
+    userInitiatedSearchRef.current = true;
+    setFilters(newFilters);
+    setIsSearchActive(!!(
+      newFilters.query ||
+      (newFilters.status && newFilters.status !== 'todos') ||
+      (newFilters.category && newFilters.category !== 'todos') ||
+      (newFilters.brand && newFilters.brand !== 'todos') ||
+      (newFilters.gender && newFilters.gender !== 'todos') ||
+      (newFilters.sizes && newFilters.sizes !== 'todos') ||
+      (newFilters.condition && newFilters.condition !== 'todos') ||
+      (newFilters.minPrice !== undefined && newFilters.minPrice !== 0) ||
+      (newFilters.maxPrice !== undefined && newFilters.maxPrice !== 5000)
+    ));
+    setSearchQuery(newFilters.query || '');
+  };
+
   // ─── Loading / Error states ───────────────────────────────────────────────────
-  if (corretorLoading || productsLoading || filterMetadataLoading) {
+  if (corretorLoading || (categoriesLoading && categories.length === 0) || filterMetadataLoading) {
     return (
       <div className="flex-1 flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -456,13 +403,9 @@ export default function CorretorPage({ customDomainSlug }: CorretorPageProps = {
     corretorId: corretor.id,
     corretorName: corretor.name,
     totalProducts,
-    loadedProducts: allProducts.length,
-    productsDisplayed: productsToDisplay.length,
-    organizedCategories: Object.keys(organizedProducts).length,
-    currentCategoryPage: currentCategoryIndex + 1,
-    totalCategoryPages: totalCategories,
+    loadedCategories: categories.length,
+    totalCategories,
     isSearchActive,
-    usingServerSearch: isSearchActive,
     filterMetadataCount: {
       categories: filterMetadata.categories.length,
       brands: filterMetadata.brands.length,
@@ -476,166 +419,138 @@ export default function CorretorPage({ customDomainSlug }: CorretorPageProps = {
   return (
     <StorefrontThemeProvider userId={corretor.id} isPaidPlan={isPaidPlan} preloadedAppearance={preloadedAppearance}>
       <div className="flex-1">
-      <CorretorHeader
-        corretor={corretor}
-        language={language}
-        currency={currency}
-        cartEnabled={cartEnabled}
-      />
-
-      <div className="mt-6 mb-8">
-        <Suspense fallback={<div className="h-20 bg-muted animate-pulse rounded-lg" />}>
-          <PromotionalBanner corretor={corretor} />
-        </Suspense>
-      </div>
-
-      <div className="container mx-auto px-4 py-1">
-        <ProductSearch
-          onFiltersChange={(newFilters) => {
-            userInitiatedSearchRef.current = true;
-            handleSearch(newFilters);
-          }}
-          products={allProducts}
-          filterMetadata={filterMetadata}
-          currency={currency}
+        <CorretorHeader
+          corretor={corretor}
           language={language}
-          settings={settings}
-          sizeTypeMapping={sizeTypeMapping}
-          initialFilters={filters}
+          currency={currency}
+          cartEnabled={cartEnabled}
         />
-      </div>
 
-      <section className="py-2" ref={productsContainerRef}>
-        <div className="container mx-auto px-4">
-          {productsError ? (
-            <Card className="text-center py-12">
-              <CardContent>
-                <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
-                <h2 className="text-xl font-semibold mb-2">{t('messages.error_loading')}</h2>
-                <p className="text-muted-foreground">{productsError}</p>
-              </CardContent>
-            </Card>
-          ) : productsLoading && Object.keys(organizedProducts).length === 0 ? (
-            <div className="space-y-12">
-              {[1, 2].map((categoryIdx) => (
-                <div key={categoryIdx} className="space-y-6">
-                  <div className="h-8 bg-muted animate-pulse rounded w-48" />
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
-                    {[1, 2, 3, 4, 5, 6, 7, 8].map((idx) => (
-                      <ProductCardSkeleton key={idx} />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : Object.keys(organizedProducts).length === 0 ? (
-            <Card className="text-center py-12">
-              <CardContent>
-                <h2 className="text-xl font-semibold mb-2">
-                  {isSearchActive ? t('messages.no_results') : t('messages.no_products')}
-                </h2>
-                <p className="text-muted-foreground">
-                  {isSearchActive
-                    ? 'Tente ajustar os filtros de busca'
-                    : 'Este vendedor ainda não possui produtos cadastrados'
-                  }
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <>
+        <div className="mt-6 mb-8">
+          <Suspense fallback={<div className="h-20 bg-muted animate-pulse rounded-lg" />}>
+            <PromotionalBanner corretor={corretor} />
+          </Suspense>
+        </div>
+
+        <div className="container mx-auto px-4 py-1">
+          <ProductSearch
+            onFiltersChange={handleSearch}
+            products={[]}
+            filterMetadata={filterMetadata}
+            currency={currency}
+            language={language}
+            settings={{}}
+            sizeTypeMapping={{}}
+            initialFilters={filters}
+          />
+        </div>
+
+        <section className="py-2" ref={productsContainerRef}>
+          <div className="container mx-auto px-4">
+            {categoriesError ? (
+              <Card className="text-center py-12">
+                <CardContent>
+                  <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+                  <h2 className="text-xl font-semibold mb-2">{t('messages.error_loading')}</h2>
+                  <p className="text-muted-foreground">{categoriesError}</p>
+                </CardContent>
+              </Card>
+            ) : categoriesLoading && categories.length === 0 ? (
               <div className="space-y-12">
-                {Object.entries(organizedProducts).map(([categoryName, products]) => (
-                  <motion.div
-                    key={categoryName}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.4 }}
-                  >
-                    <div className="flex items-center justify-between mb-6">
-                      <h2 className="text-xl md:text-2xl font-bold text-foreground">{categoryName}</h2>
-                      <div className="flex items-center gap-2">
-                        {categoryName !== t('categories.others') && (
-                          <ShareCategoryButton
-                            corretorSlug={corretor.slug || ''}
-                            categoryName={categoryName}
-                            language={language}
-                            className="opacity-60 hover:opacity-100 transition-opacity"
-                          />
-                        )}
-                      </div>
-                    </div>
-
+                {[1, 2].map((categoryIdx) => (
+                  <div key={categoryIdx} className="space-y-6">
+                    <div className="h-8 bg-muted animate-pulse rounded w-48" />
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
-                      {products.map((product) => (
-                        <ProductCard
-                          key={product.id}
-                          product={product}
-                          corretorSlug={corretor.slug || ''}
-                          currency={currency}
-                          language={language}
-                          inventoryEnabled={inventoryEnabled}
-                          showStockOnStorefront={showStockOnStorefront}
-                          cartEnabled={cartEnabled}
-                          onNavigate={() => {
-                            const currentScrollPosition = window.scrollY || document.documentElement.scrollTop;
-                            pageStateHook.saveCurrentState(currentScrollPosition);
-                          }}
-                        />
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map((idx) => (
+                        <ProductCardSkeleton key={idx} />
                       ))}
                     </div>
-                  </motion.div>
+                  </div>
                 ))}
               </div>
-
-              {isSearchActive && (
-                <div className="mt-12">
-                  <PaginationControls
-                    currentPage={searchResultsPage}
-                    totalPages={Math.ceil(allServerSearchResults.length / pageSize)}
-                    hasNextPage={searchResultsPage < Math.ceil(allServerSearchResults.length / pageSize)}
-                    hasPreviousPage={searchResultsPage > 1}
-                    onPageChange={handlePageChange}
-                    totalProducts={allServerSearchResults.length}
-                    pageSize={pageSize}
-                    isLoading={serverSearchLoading}
-                  />
-                </div>
-              )}
-
-              {!isSearchActive && hasNextCategory && (
-                <InfiniteScrollTrigger
-                  onLoadMore={loadNextCategory}
-                  hasNextPage={hasNextCategory}
-                  isLoading={productsLoading}
-                />
-              )}
-
-              {isSearchActive && serverSearchLoading && (
-                <div className="mt-8 flex items-center justify-center">
-                  <Loader className="h-5 w-5 animate-spin text-primary mr-2" />
-                  <p className="text-sm text-muted-foreground">{t('messages.loading_search_results')}</p>
-                </div>
-              )}
-
-              {isSearchActive && allServerSearchResults.length > 0 && !serverSearchLoading && (
-                <div className="mt-8 p-4 bg-muted/50 rounded-lg text-center">
-                  <p className="text-sm text-muted-foreground">
-                    {allServerSearchResults.length} {allServerSearchResults.length === 1 ? t('messages.product') : t('messages.products')} {t('messages.found')}
+            ) : categories.length === 0 ? (
+              <Card className="text-center py-12">
+                <CardContent>
+                  <h2 className="text-xl font-semibold mb-2">
+                    {isSearchActive ? t('messages.no_results') : t('messages.no_products')}
+                  </h2>
+                  <p className="text-muted-foreground">
+                    {isSearchActive
+                      ? 'Tente ajustar os filtros de busca'
+                      : 'Este vendedor ainda não possui produtos cadastrados'
+                    }
                   </p>
-                  {filters.category && filters.category !== 'todos' && (
-                    <p className="text-xs text-muted-foreground mt-2">
-                      {t('messages.showing_active_products_only')}
-                    </p>
-                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                <div className="space-y-12">
+                  {categories.map((category) => (
+                    <motion.div
+                      key={category.name}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4 }}
+                    >
+                      <div className="flex items-center justify-between mb-6">
+                        <h2 className="text-xl md:text-2xl font-bold text-foreground">{category.name}</h2>
+                        <div className="flex items-center gap-2">
+                          {category.totalProducts > category.products.length && (
+                            <span className="text-sm text-muted-foreground">
+                              {category.products.length} de {category.totalProducts}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+                        {category.products.map((product) => (
+                          <ProductCard
+                            key={product.id}
+                            product={product}
+                            corretorSlug={corretor.slug || ''}
+                            currency={currency}
+                            language={language}
+                            inventoryEnabled={inventoryEnabled}
+                            showStockOnStorefront={showStockOnStorefront}
+                            cartEnabled={cartEnabled}
+                            onNavigate={() => {
+                              const currentScrollPosition = window.scrollY || document.documentElement.scrollTop;
+                              pageStateHook.saveCurrentState(currentScrollPosition);
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </motion.div>
+                  ))}
                 </div>
-              )}
 
+                {!isSearchActive && hasMoreCategories && (
+                  <InfiniteScrollTrigger
+                    onLoadMore={loadMoreCategories}
+                    hasNextPage={hasMoreCategories}
+                    isLoading={categoriesLoadingMore}
+                  />
+                )}
 
-            </>
-          )}
-        </div>
-      </section>
+                {categoriesLoadingMore && (
+                  <div className="flex justify-center py-8">
+                    <Loader className="h-5 w-5 animate-spin text-primary mr-2" />
+                    <span className="text-sm text-muted-foreground">Carregando mais categorias...</span>
+                  </div>
+                )}
+
+                {!hasMoreCategories && categories.length > 0 && (
+                  <div className="mt-8 p-4 bg-muted/50 rounded-lg text-center">
+                    <p className="text-sm text-muted-foreground">
+                      {totalProducts} {totalProducts === 1 ? 'produto' : 'produtos'} em {totalCategories} {totalCategories === 1 ? 'categoria' : 'categorias'}
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </section>
       </div>
     </StorefrontThemeProvider>
   );
